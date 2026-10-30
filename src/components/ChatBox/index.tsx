@@ -58,6 +58,10 @@ import {
   finishResumeRequest,
 } from '@/lib/runResumeRequest';
 import { inferSessionModeFromTask } from '@/lib/sessionMode';
+import {
+  parseSpaceModelChoice,
+  SPACE_MODEL_METADATA_KEY,
+} from '@/lib/spaceModelChoice';
 import { parseSpaceModelReference } from '@/lib/spaceModelReference';
 import { takeControlOfTask } from '@/lib/taskRuntimeControl';
 import { errorCopy } from '@/lib/usageErrors';
@@ -422,7 +426,14 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
       sessionModelIdentity &&
       sessionModelIdentity.category === sessionModelSelection?.modelType
     );
-  const composerModelType = sessionModelSelection?.modelType ?? modelType;
+  // An unpinned new Session starts on its Space's saved model.
+  const spaceModelType = parseSpaceModelChoice(
+    activeProject?.metadata?.spaceModelDefaultPending === true
+      ? sessionSpace?.metadata?.[SPACE_MODEL_METADATA_KEY]
+      : null
+  )?.modelType;
+  const composerModelType =
+    sessionModelSelection?.modelType ?? spaceModelType ?? modelType;
   const usage = useUsageNoticeStore();
   const subscriptionUsage = usage.subscription;
   const currentCredits = usage.credits;
@@ -491,11 +502,12 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
   const incidentBanner = useUsageIncidentBanner(composerModelType);
   const bannerId = usageLimitBannerState?.id;
   // Blockers remain discoverable after the toast is dismissed; warnings can be hidden.
-  const usageLimitBanner =
-    incidentBanner ??
-    (composerModelType !== 'cloud' ||
-    !usageLimitBannerState ||
-    bannerId === dismissedUsageLimitBannerId
+  // An open incident owns this slot even while its toast hides the banner.
+  const usageLimitBanner = incident
+    ? incidentBanner
+    : composerModelType !== 'cloud' ||
+        !usageLimitBannerState ||
+        bannerId === dismissedUsageLimitBannerId
       ? null
       : {
           message: usageLimitBannerState.message,
@@ -510,7 +522,7 @@ function LegacyChatBox({ accountKey }: { accountKey: string }): JSX.Element {
             setDismissedUsageLimitBannerId(bannerId ?? null);
             acknowledgeUsageNotice();
           },
-        });
+        };
 
   const [useCloudModelInDev, setUseCloudModelInDev] = useState(false);
 
